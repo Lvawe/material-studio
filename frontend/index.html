@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>视频素材自动化生产平台</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🎬</span>
+      <div>
+        <h1>视频素材自动化生产平台</h1>
+        <p class="subtitle">爆款分析 · 脚本生产 · 一键混剪</p>
+      </div>
+    </div>
+    <div class="workflow-hint">
+      <span class="step-tag active" data-jump="tab-analyze">① 爆款素材分析</span>
+      <span class="arrow">→</span>
+      <span class="step-tag" data-jump="tab-script">② 自动化生产脚本</span>
+      <span class="arrow">→</span>
+      <span class="step-tag" data-jump="tab-mixing">③ 一键混剪</span>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="tab-analyze">① 爆款素材分析</button>
+    <button class="tab-btn" data-tab="tab-script">② 自动化生产脚本</button>
+    <button class="tab-btn" data-tab="tab-mixing">③ 一键混剪</button>
+  </nav>
+
+  <main class="container">
+
+    <!-- ============ 模块① 爆款素材分析 ============ -->
+    <section id="tab-analyze" class="tab-pane active">
+      <div class="card">
+        <h2>上传 AData 导出文件</h2>
+        <p class="desc">
+          AData 站点已对 AI Agent 访问做安全拦截，请手动从 AData 报表点击「下载数据」，
+          导出 <b>.csv / .xlsx</b> 后上传。系统将自动按 <b>消耗</b> 降序排序，展示 Top N 爆款素材。
+        </p>
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" hidden>
+          <div class="upload-inner">
+            <span class="upload-icon">📤</span>
+            <p>点击或拖拽文件到此处上传</p>
+            <p class="hint">支持 .csv / .xlsx / .xls</p>
+          </div>
+        </div>
+        <div class="controls">
+          <label>取 Top
+            <input type="number" id="topN" value="50" min="1" max="500" style="width:70px">
+            条
+          </label>
+          <button class="btn primary" id="analyzeBtn" disabled>开始分析</button>
+          <span id="fileName" class="file-name"></span>
+        </div>
+      </div>
+
+      <div id="analyzeResult" class="card hidden">
+        <h2>分析结果</h2>
+        <div id="summary" class="summary-grid"></div>
+        <div class="table-toolbar">
+          <span id="resultMeta" class="meta"></span>
+          <button class="btn" id="toScriptBtn">用这批素材生成脚本 →</button>
+        </div>
+        <div class="table-wrap">
+          <table id="resultTable"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 模块② 自动化生产脚本 ============ -->
+    <section id="tab-script" class="tab-pane">
+      <div class="card">
+        <h2>自动化生产脚本</h2>
+        <p class="desc">
+          基于模块①分析出的爆款素材，自动总结为 <b>分镜脚本 + 口播文案 + AI 生成提示词</b>，
+          可直接用于即梦/可灵/海螺等 AI 工具生产视频片段。
+        </p>
+        <div class="controls">
+          <label>行业
+            <select id="industrySelect">
+              <option value="">自动识别</option>
+              <option value="男装">男装</option>
+              <option value="女装">女装</option>
+              <option value="厨具">厨具</option>
+              <option value="美妆">美妆</option>
+              <option value="珠宝">珠宝</option>
+              <option value="食品">食品</option>
+              <option value="日百">日百</option>
+            </select>
+          </label>
+          <label>生成数量
+            <input type="number" id="scriptLimit" value="5" min="1" max="50" style="width:70px">
+          </label>
+          <button class="btn primary" id="genScriptBtn">生成脚本</button>
+          <span id="scriptSourceInfo" class="meta"></span>
+        </div>
+      </div>
+      <div id="scriptResult" class="script-list"></div>
+    </section>
+
+    <!-- ============ 模块③ 一键混剪 ============ -->
+    <section id="tab-mixing" class="tab-pane">
+      <div class="card">
+        <h2>一键混剪</h2>
+        <p class="desc">
+          短期方案：跳转外部工具完成混剪成片。把模块②生成的脚本/提示词与 AI 片段，
+          带入下列工具按指引操作。<b>后端自建剪辑工具将在后续迭代中接入。</b>
+        </p>
+      </div>
+      <div id="toolsGrid" class="tools-grid"></div>
+    </section>
+
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

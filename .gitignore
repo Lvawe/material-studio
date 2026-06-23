@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 上传/生成的临时数据
+uploads/
+output/
+*.tmp
+
+# 敏感信息
+adata_cookie.txt
+.env
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
