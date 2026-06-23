@@ -3,13 +3,17 @@
 FastAPI 提供三个模块的 API + 静态前端托管。
 """
 import os
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import JSONResponse, FileResponse
+import uuid
+import threading
+
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from analyzer import analyze
-from script_gen import batch_generate, generate_storyboard
+import llm_client
+import video_analyzer
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
@@ -112,18 +116,70 @@ async def api_analyze(file: UploadFile = File(...), top_n: int = Form(50)):
         raise HTTPException(status_code=500, detail=f"分析失败：{e}")
 
 
-@app.post("/api/generate-scripts")
-def api_generate_scripts(req: ScriptRequest):
-    """模块②：基于素材列表批量生成分镜/口播脚本"""
-    try:
-        if not req.materials:
-            raise ValueError("素材列表为空，请先在模块①完成分析")
-        result = batch_generate(req.materials, industry=req.industry, limit=req.limit)
-        return JSONResponse(result)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"脚本生成失败：{e}")
+# ---------- 模块②：视频分析异步任务 ----------
+# 任务存储（内存版，单进程足够；后续可换 Redis）
+TASKS = {}
+TASKS_LOCK = threading.Lock()
+
+
+def _run_analyze_task(task_id: str, materials: list, industry: str):
+    """后台线程：逐条分析素材，实时更新进度"""
+    total = len(materials)
+    for i, m in enumerate(materials):
+        try:
+            res = video_analyzer.analyze_one(m, industry=industry)
+        except Exception as e:
+            res = {"素材": m.get("素材名称", f"#{i+1}"), "分析来源": "error",
+                   "提示": str(e), "分镜": [], "口播文案": "", "卖点要素": [], "生产模板": {}}
+        with TASKS_LOCK:
+            t = TASKS.get(task_id)
+            if t is None or t.get("cancelled"):
+                return
+            t["done"] = i + 1
+            t["results"].append(res)
+    with TASKS_LOCK:
+        if task_id in TASKS:
+            TASKS[task_id]["status"] = "completed"
+
+
+@app.post("/api/analyze-videos")
+def api_analyze_videos(req: ScriptRequest, background: BackgroundTasks):
+    """模块②：启动视频分析任务，返回 task_id 供轮询进度"""
+    if not req.materials:
+        raise HTTPException(status_code=400, detail="素材列表为空，请先在模块①完成分析")
+    materials = req.materials[: req.limit]
+    task_id = uuid.uuid4().hex[:12]
+    with TASKS_LOCK:
+        TASKS[task_id] = {
+            "status": "running", "total": len(materials),
+            "done": 0, "results": [], "industry": req.industry,
+        }
+    background.add_task(_run_analyze_task, task_id, materials, req.industry)
+    return {"task_id": task_id, "total": len(materials),
+            "llm_configured": llm_client.is_configured()}
+
+
+@app.get("/api/analyze-videos/{task_id}")
+def api_task_status(task_id: str):
+    """轮询任务进度与结果"""
+    with TASKS_LOCK:
+        t = TASKS.get(task_id)
+        if not t:
+            raise HTTPException(status_code=404, detail="任务不存在或已过期")
+        return {
+            "status": t["status"], "total": t["total"], "done": t["done"],
+            "industry": t["industry"], "results": t["results"],
+        }
+
+
+@app.get("/api/llm-status")
+def api_llm_status():
+    """返回 LLM 配置状态，供前端提示"""
+    return {
+        "configured": llm_client.is_configured(),
+        "model": llm_client.LLM_MODEL if llm_client.is_configured() else None,
+        "base_url_set": bool(llm_client.LLM_BASE_URL),
+    }
 
 
 @app.get("/api/mixing-tools")

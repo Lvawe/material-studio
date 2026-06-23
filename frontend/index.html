@@ -74,11 +74,12 @@
     <!-- ============ 模块② 自动化生产脚本 ============ -->
     <section id="tab-script" class="tab-pane">
       <div class="card">
-        <h2>自动化生产脚本</h2>
+        <h2>自动化生产脚本（大模型视频分析）</h2>
         <p class="desc">
-          基于模块①分析出的爆款素材，自动总结为 <b>分镜脚本 + 口播文案 + AI 生成提示词</b>，
-          可直接用于即梦/可灵/海螺等 AI 工具生产视频片段。
+          基于模块①的爆款素材，逐条<b>下载视频 → 抽帧 → 大模型分析</b>，输出
+          <b>还原分镜 + 口播文案 + 卖点要素拆解 + 可复用生产模板</b>。
         </p>
+        <div id="llmBanner" class="banner"></div>
         <div class="controls">
           <label>行业
             <select id="industrySelect">
@@ -92,11 +93,15 @@
               <option value="日百">日百</option>
             </select>
           </label>
-          <label>生成数量
-            <input type="number" id="scriptLimit" value="5" min="1" max="50" style="width:70px">
+          <label>分析数量
+            <input type="number" id="scriptLimit" value="3" min="1" max="50" style="width:70px">
           </label>
-          <button class="btn primary" id="genScriptBtn">生成脚本</button>
+          <button class="btn primary" id="genScriptBtn">开始分析视频</button>
           <span id="scriptSourceInfo" class="meta"></span>
+        </div>
+        <div id="progressWrap" class="progress-wrap hidden">
+          <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+          <span id="progressText" class="meta"></span>
         </div>
       </div>
       <div id="scriptResult" class="script-list"></div>

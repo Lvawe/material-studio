@@ -199,3 +199,29 @@ td.cost-cell { color: var(--primary); font-weight: 600; }
 .toast.success { background: var(--success); }
 
 .empty-tip { text-align: center; color: var(--muted); padding: 40px; font-size: 14px; }
+
+/* LLM 状态横幅 */
+.banner { border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; }
+.banner.ok { background: #eafaf3; color: #0f8a63; border: 1px solid #b8ead7; }
+.banner.warn { background: #fff7e8; color: #b07400; border: 1px solid #ffe3ac; }
+.banner.hidden { display: none; }
+
+/* 进度条 */
+.progress-wrap { margin-top: 16px; display: flex; align-items: center; gap: 12px; }
+.progress-bar { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, #3b6ef5, #6b4ef5); transition: width .3s; }
+
+/* 分析来源标记 */
+.source-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 6px; }
+.source-badge.llm { background: #eafaf3; color: #0f8a63; }
+.source-badge.mock { background: #fff7e8; color: #b07400; }
+.source-badge.template { background: #eef0f5; color: #8590a6; }
+.source-badge.error { background: #fdeaea; color: #d0454a; }
+
+/* 卖点/模板块 */
+.point-item { background: #f3f8ff; border: 1px solid #d8e6ff; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; }
+.point-item b { color: var(--primary); }
+.template-box { background: #f7f5ff; border: 1px solid #e2dbff; border-radius: 8px; padding: 12px 14px; font-size: 13px; }
+.template-box .row { margin-bottom: 6px; }
+.template-box .row b { color: #6b4ef5; }
+.template-box ul { padding-left: 18px; margin: 4px 0; }
