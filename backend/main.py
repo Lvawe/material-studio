@@ -178,7 +178,8 @@ def api_llm_status():
     return {
         "configured": llm_client.is_configured(),
         "model": llm_client.LLM_MODEL if llm_client.is_configured() else None,
-        "base_url_set": bool(llm_client.LLM_BASE_URL),
+        "mode": llm_client.ANALYSIS_MODE,
+        "mode_label": llm_client.mode_label(),
     }
 
 

@@ -132,7 +132,10 @@ async function loadLLMStatus() {
     const banner = $("llmBanner");
     if (d.configured) {
       banner.className = "banner ok";
-      banner.innerHTML = `✅ 大模型已就绪（claude-internal · <b>${d.model}</b>），将进行真实视频内容分析。`;
+      const modeNote = d.mode === "vision"
+        ? "将下载视频抽帧并读图分析"
+        : "基于素材元数据 + 投放数据生成策略脚本（视觉API到位后可切换为读图分析）";
+      banner.innerHTML = `✅ 大模型已就绪 · 模式：<b>${d.mode_label}</b>（${d.model}）。${modeNote}`;
     } else {
       banner.className = "banner warn";
       banner.innerHTML = `⚠️ 未检测到 claude-internal 或未配置 CODEBUDDY_API_KEY，当前为<b>示例(mock)模式</b>。` +

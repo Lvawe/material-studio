@@ -58,28 +58,29 @@ def analyze_one(material: dict, industry: str = "") -> dict:
         "视频地址": "",
     }
 
+    if raw_video:
+        base["视频地址"] = video_utils.resolve_video_url(raw_video)
+
     video_path = None
     frames_dir = None
     try:
-        if not raw_video:
-            # 没有视频地址 → 退回规则模板
-            tpl = generate_storyboard(material, industry)
-            return _from_template(base, tpl, reason="素材无视频地址/MD5")
+        frames = None
+        # 仅 vision 模式才需要下载视频并抽帧；text 模式直接用元数据推断
+        if llm_client.ANALYSIS_MODE == "vision":
+            if not raw_video:
+                tpl = generate_storyboard(material, industry)
+                return _from_template(base, tpl, reason="vision模式但素材无视频地址")
+            video_path = video_utils.download_video(base["视频地址"])
+            frames = video_utils.extract_frames(video_path)
+            frames_dir = frames[0].rsplit("/", 1)[0] if frames else None
 
-        url = video_utils.resolve_video_url(raw_video)
-        base["视频地址"] = url
-
-        # 下载 + 抽帧
-        video_path = video_utils.download_video(url)
-        frames = video_utils.extract_frames(video_path)
-        frames_dir = frames[0].rsplit("/", 1)[0] if frames else None
-
-        # 大模型分析
-        analysis = llm_client.analyze_video_frames(
-            frames, material_name=name, industry=industry, extra_context=ctx)
+        analysis = llm_client.analyze_material(
+            material_name=name, industry=industry, extra_context=ctx, frames=frames)
 
         base.update({
             "分析来源": analysis.get("_source", "llm"),
+            "使用模型": analysis.get("_model", ""),
+            "分析模式": analysis.get("_mode", llm_client.ANALYSIS_MODE),
             "分镜": analysis.get("分镜", []),
             "口播文案": analysis.get("口播文案", ""),
             "卖点要素": analysis.get("卖点要素", []),
@@ -90,9 +91,9 @@ def analyze_one(material: dict, industry: str = "") -> dict:
         return base
 
     except Exception as e:
-        logger.warning(f"素材[{name}] 视频分析失败，降级模板：{e}")
+        logger.warning(f"素材[{name}] 分析失败，降级模板：{e}")
         tpl = generate_storyboard(material, industry)
-        return _from_template(base, tpl, reason=f"视频处理失败：{e}")
+        return _from_template(base, tpl, reason=f"分析失败：{e}")
     finally:
         video_utils.cleanup(video_path, frames_dir)
 

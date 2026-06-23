@@ -12,32 +12,36 @@
 
 ---
 
-## 模块② 大模型视频分析
-
-工作流：素材明细中的 **视频URL/MD5** → 下载视频 → ffmpeg 均匀抽帧 → 多模态大模型分析 → 结构化输出四项。
+## 模块② 大模型分析
 
 ### 大模型调用方式（合规）
 
-模块② 通过腾讯官方 **`claude-internal`（Claude Code Internal）CLI 非交互模式** 进行多模态图片分析，
-这是平台文档明确支持的用法（`CODEBUDDY_API_KEY` + `claude-internal -p`），**不逆向、不直连平台模型 HTTP 接口**，符合合规要求。
+通过腾讯官方 **`claude-internal`（Claude Code Internal）CLI 非交互模式** 调用
+（`CODEBUDDY_API_KEY` + `claude-internal -p`），**不逆向、不直连平台模型 HTTP 接口**，符合合规要求。
 
-调用链：抽帧图片 → 复制到临时目录 → `claude-internal -p --output-format json` 读图分析 → 解析 `result` 字段中的业务 JSON。
+### 两种分析模式（`ANALYSIS_MODE`）
 
-### 配置（启用真实分析）
+| 模式 | 工作流 | 说明 |
+|------|--------|------|
+| **text**（当前默认） | 素材名称+行业+投放数据 → 内部文本模型 → 结构化脚本 | 稳定可用。非交互模式内部模型（DeepSeek/GLM）为**文本模型，无视觉能力**，故基于元数据推断 |
+| **vision**（待启用） | 视频URL → 下载 → ffmpeg抽帧 → 多模态读图 → 结构化脚本 | 需要**真正支持图片输入的视觉模型API**。代码已就绪，配好视觉模型后改 `ANALYSIS_MODE=vision` 即可 |
 
-1. 安装 `claude-internal`（若未安装）：
+> ⚠️ **重要**：实测 claude-internal 非交互模式的内部模型（GLM-4.7/GLM-5v/DeepSeek-V3.1/V4）
+> **均无真实视觉能力**（只能读到图片文件元数据，读不到画面），外部 Claude 视觉模型在非交互模式不可用。
+> 因此当前用 **text 模式** 跑通闭环；待获得视觉 API 后切 vision 模式无缝升级。
+
+### 配置
+
+1. 安装 `claude-internal`：
    ```bash
    npm install -g --registry=https://mirrors.tencent.com/npm @tencent/claude-code-internal
    ```
-2. 复制 `.env.example` 为 `.env`，填写：
-   - `CODEBUDDY_API_KEY`：从 CodeBuddy API Key 管理页获取
-   - `VIDEO_URL_TEMPLATE`：若明细只有 MD5，配置如 `https://cdn.xxx.com/{md5}.mp4`
-3. 安装 ffmpeg（`brew install ffmpeg`）
+2. 复制 `.env.example` 为 `.env`，填写 `CODEBUDDY_API_KEY`，按需设 `ANALYSIS_MODE` / `LLM_MODEL`
+3. （仅 vision 模式需要）安装 ffmpeg：`brew install ffmpeg`
 4. 重启服务
 
-> **未配置 / CLI 不可用时**：自动降级为 mock 示例，保证流程可演示。前端有横幅提示。
-> **健壮性**：单条素材下载/抽帧/分析任一失败都会降级，不中断整批任务。
-> **性能**：每条视频分析约 30-60s（含模型读图推理）。
+> **降级链**：主模型失败 → 回退模型 → mock 示例，保证流程不中断。
+> **输出四项**：分镜、口播文案、卖点要素拆解、可复用生产模板。
 
 ### 模块② API（异步任务）
 
