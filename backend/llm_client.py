@@ -1,67 +1,86 @@
 """
-大模型客户端 - OpenAI 兼容协议
-支持多模态（文本 + 图片帧）输入，用于视频内容分析。
-未配置 key 或调用失败时降级为 mock，保证 pipeline 可跑通。
+大模型客户端 - 通过 claude-internal CLI（Claude Code Internal）进行多模态分析。
+
+合规说明：
+本模块使用腾讯官方提供的 `claude-internal` 命令行工具的非交互模式（-p）进行调用，
+这是文档明确支持的用法（CODEBUDDY_API_KEY + claude-internal -p）。
+不逆向、不直连平台模型 HTTP 接口，符合平台合规要求。
+
+工作方式：
+  抽帧图片 → 复制到临时工作目录 → 调用 `claude-internal -p` 读图分析 → 解析返回 JSON
+未配置 key / CLI 不可用 / 调用失败时降级为 mock，保证 pipeline 可跑通。
 """
 import os
+import re
 import json
-import base64
+import shutil
 import logging
+import subprocess
+import tempfile
 
-import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "").rstrip("/")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
-LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+CODEBUDDY_API_KEY = os.getenv("CODEBUDDY_API_KEY", "") or os.getenv("LLM_API_KEY", "")
+CLAUDE_CLI = os.getenv("CLAUDE_CLI_PATH", "claude-internal")
+CLI_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "180"))
 USE_MOCK = os.getenv("USE_MOCK", "false").lower() == "true"
+
+_cli_path_cache = None
+
+
+def _find_cli():
+    """查找 claude-internal 可执行文件路径"""
+    global _cli_path_cache
+    if _cli_path_cache is not None:
+        return _cli_path_cache
+    path = shutil.which(CLAUDE_CLI)
+    _cli_path_cache = path or ""
+    return _cli_path_cache
 
 
 def is_configured() -> bool:
-    """是否具备真实调用条件"""
-    return bool(LLM_BASE_URL and LLM_API_KEY) and not USE_MOCK
-
-
-def _encode_image(image_path: str) -> str:
-    with open(image_path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
+    """是否具备真实调用条件：有 key + CLI 可用 + 未强制 mock"""
+    return bool(CODEBUDDY_API_KEY) and bool(_find_cli()) and not USE_MOCK
 
 
 def analyze_video_frames(frames: list, material_name: str = "", industry: str = "",
                          extra_context: dict = None) -> dict:
     """
-    把视频抽帧 + 元信息发给多模态大模型，返回结构化分析。
+    把视频抽帧 + 元信息交给 claude-internal 分析，返回结构化结果。
     frames: 帧图片路径列表
-    返回: {分镜, 口播文案, 卖点要素, 生产模板, _source}
     """
     if not is_configured() or not frames:
-        return _mock_analysis(material_name, industry, reason="未配置LLM" if not is_configured() else "无帧")
+        reason = "未配置CODEBUDDY_API_KEY或CLI不可用" if not is_configured() else "无帧"
+        return _mock_analysis(material_name, industry, reason=reason)
 
     try:
-        return _call_llm(frames, material_name, industry, extra_context or {})
+        return _call_cli(frames, material_name, industry, extra_context or {})
     except Exception as e:
-        logger.warning(f"LLM 调用失败，降级 mock：{e}")
+        logger.warning(f"claude-internal 调用失败，降级 mock：{e}")
         return _mock_analysis(material_name, industry, reason=f"调用失败:{e}")
 
 
-def _build_prompt(material_name: str, industry: str, ctx: dict) -> str:
+def _build_prompt(frame_names: list, material_name: str, industry: str, ctx: dict) -> str:
     metric_lines = "\n".join(f"- {k}: {v}" for k, v in ctx.items() if v not in ("", None))
-    return f"""你是资深短视频广告分析师。下面是一条电商爆款广告视频按时间顺序均匀抽取的若干帧画面。
+    frame_list = "、".join(frame_names)
+    return f"""请读取当前目录下这些按视频时间顺序抽取的帧图片：{frame_list}
+
+这是一条电商爆款广告视频的关键帧。
 素材名称：{material_name or '未知'}
 所属行业：{industry or '未知'}
 {('投放数据：' + chr(10) + metric_lines) if metric_lines else ''}
 
-请基于这些帧，还原并分析这条视频，严格输出 JSON（不要任何额外文字），结构如下：
+请基于这些帧，还原并分析这条视频，**只输出一个 JSON**（不要任何解释文字、不要 markdown 代码块标记），结构如下：
 {{
   "分镜": [
     {{"序号":1, "时长":"0-3s", "画面":"画面内容描述", "运镜":"运镜方式(特写/推拉/环绕/平移等)", "作用":"该镜头作用(钩子/卖点/CTA等)"}}
   ],
-  "口播文案": "逐句还原或推测的口播/字幕文案，用换行分隔",
+  "口播文案": "逐句还原或推测的口播/字幕文案，用\\n分隔",
   "卖点要素": [
-    {{"卖点":"卖点名", "呈现方式":"如何在画面中呈现的", "爆款要素":"为什么吸引人"}}
+    {{"卖点":"卖点名", "呈现方式":"如何在画面中呈现", "爆款要素":"为什么吸引人"}}
   ],
   "生产模板": {{
     "适用行业":"...",
@@ -70,45 +89,55 @@ def _build_prompt(material_name: str, industry: str, ctx: dict) -> str:
     "可复用文案模板":"把口播抽象成可替换的模板"
   }}
 }}
-注意：分镜按帧的时间顺序合理推断；时长总和控制在30-60s；只输出 JSON。"""
+要求：分镜按帧时间顺序合理推断；总时长30-60s；直接输出 JSON，不要包含任何其它文字。"""
 
 
-def _call_llm(frames, material_name, industry, ctx) -> dict:
-    content = [{"type": "text", "text": _build_prompt(material_name, industry, ctx)}]
-    for fp in frames:
-        b64 = _encode_image(fp)
-        content.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-        })
+def _call_cli(frames, material_name, industry, ctx) -> dict:
+    """在临时目录里放帧图，调用 claude-internal -p 分析"""
+    work_dir = tempfile.mkdtemp(prefix="cc_analyze_")
+    try:
+        # 复制帧到工作目录，用简单文件名
+        frame_names = []
+        for i, fp in enumerate(frames, 1):
+            name = f"frame_{i:02d}.jpg"
+            shutil.copy(fp, os.path.join(work_dir, name))
+            frame_names.append(name)
 
-    payload = {
-        "model": LLM_MODEL,
-        "messages": [{"role": "user", "content": content}],
-        "temperature": 0.4,
-        "max_tokens": 2500,
-    }
-    headers = {
-        "Authorization": f"Bearer {LLM_API_KEY}",
-        "Content-Type": "application/json",
-    }
+        prompt = _build_prompt(frame_names, material_name, industry, ctx)
 
-    with httpx.Client(timeout=120) as client:
-        r = client.post(f"{LLM_BASE_URL}/chat/completions", json=payload, headers=headers)
-        r.raise_for_status()
-        data = r.json()
+        env = os.environ.copy()
+        env["CODEBUDDY_API_KEY"] = CODEBUDDY_API_KEY
+        # 避免读取到 ANTHROPIC_API_KEY 导致校验冲突（文档 FAQ 提及）
+        env.pop("ANTHROPIC_API_KEY", None)
 
-    text = data["choices"][0]["message"]["content"]
-    parsed = _extract_json(text)
-    parsed["_source"] = "llm"
-    return parsed
+        cli = _find_cli()
+        result = subprocess.run(
+            [cli, "-p", "--output-format", "json",
+             "--dangerously-skip-permissions", prompt],
+            cwd=work_dir, env=env, capture_output=True, text=True, timeout=CLI_TIMEOUT,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"CLI 退出码 {result.returncode}: {result.stderr[-200:]}")
+
+        # --output-format json 返回外层信封，真正回答在 result 字段
+        envelope = json.loads(result.stdout.strip())
+        if envelope.get("is_error"):
+            raise RuntimeError(f"CLI 返回错误: {envelope.get('result', '')[:200]}")
+        answer = envelope.get("result", "")
+        if not answer:
+            raise RuntimeError("CLI 返回空 result")
+
+        parsed = _extract_json(answer)
+        parsed["_source"] = "llm"
+        return parsed
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 def _extract_json(text: str) -> dict:
-    """从模型输出中提取 JSON（兼容 ```json 包裹）"""
+    """从模型输出中提取 JSON（兼容 ```json 包裹或前后有说明文字）"""
     t = text.strip()
     if "```" in t:
-        # 取第一个代码块内容
         parts = t.split("```")
         for p in parts:
             p = p.strip()
@@ -119,7 +148,7 @@ def _extract_json(text: str) -> dict:
                 break
     start = t.find("{")
     end = t.rfind("}")
-    if start != -1 and end != -1:
+    if start != -1 and end != -1 and end > start:
         t = t[start:end + 1]
     return json.loads(t)
 
@@ -149,3 +178,8 @@ def _mock_analysis(material_name: str, industry: str, reason: str = "") -> dict:
         "_source": "mock",
         "_mock_reason": reason,
     }
+
+
+# 兼容旧引用：暴露一个 LLM_MODEL 名称供前端状态展示
+LLM_MODEL = os.getenv("LLM_MODEL", "claude-internal")
+LLM_BASE_URL = "claude-internal-cli"  # 标记为 CLI 模式

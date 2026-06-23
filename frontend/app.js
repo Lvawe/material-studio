@@ -132,11 +132,11 @@ async function loadLLMStatus() {
     const banner = $("llmBanner");
     if (d.configured) {
       banner.className = "banner ok";
-      banner.innerHTML = `✅ 大模型已配置（模型：<b>${d.model}</b>），将进行真实视频内容分析。`;
+      banner.innerHTML = `✅ 大模型已就绪（claude-internal · <b>${d.model}</b>），将进行真实视频内容分析。`;
     } else {
       banner.className = "banner warn";
-      banner.innerHTML = `⚠️ 大模型未配置（缺少 Base URL 或 API Key），当前为<b>示例(mock)模式</b>。` +
-        `请在 <code>.env</code> 配置 LLM_BASE_URL / LLM_MODEL / LLM_API_KEY 后重启服务。`;
+      banner.innerHTML = `⚠️ 未检测到 claude-internal 或未配置 CODEBUDDY_API_KEY，当前为<b>示例(mock)模式</b>。` +
+        `请安装 claude-internal 并在 <code>.env</code> 配置 CODEBUDDY_API_KEY 后重启服务。`;
     }
   } catch (e) { /* 忽略 */ }
 }

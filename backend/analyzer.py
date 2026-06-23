@@ -116,6 +116,9 @@ def analyze(file_bytes: bytes, filename: str, top_n: int = 50) -> dict:
     df_sorted = df.sort_values("_cost_num", ascending=False).reset_index(drop=True)
 
     top_df = df_sorted.head(top_n).copy()
+    # 若原文件已存在"排名"列，先移除，避免 insert 重名报错
+    if "排名" in top_df.columns:
+        top_df = top_df.drop(columns=["排名"])
     top_df.insert(0, "排名", range(1, len(top_df) + 1))
 
     # 概览统计
